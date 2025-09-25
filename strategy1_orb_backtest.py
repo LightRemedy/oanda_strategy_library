@@ -267,7 +267,7 @@ class ORBBacktester:
         print(f"Total bars: {len(df)}")
         
         # Get unique trading days
-        trading_days = sorted(df.index.date.unique())
+        trading_days = sorted(pd.Series(df.index.date).unique())
         print(f"Trading days: {len(trading_days)}")
         
         # Process each trading day
@@ -416,7 +416,7 @@ class ORBBacktester:
         
         # Show recent trades
         if 'trades_df' in self.results and not self.results['trades_df'].empty:
-            print(f"\nRecent Trades:")
+            print("\nRecent Trades:")
             recent_trades = self.results['trades_df'].tail(10)
             for _, trade in recent_trades.iterrows():
                 print(f"{trade['entry_time']} | {trade['direction']} | "
