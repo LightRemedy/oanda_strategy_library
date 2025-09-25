@@ -6,10 +6,10 @@ import pandas as pd
 # ========= Account & API Setup =========
 ACCOUNT_ID = "101-003-29297410-001"
 ACCESS_TOKEN = "e489cd7ce9f304a660ac932fa5083807-29050e51018a56c3f829751f6e6c87e9"
-timeframe = "M1"
+timeframe = "M5"
 symbol = "SPY500"
 start_date = "2023-01-01"
-end_date = "2025-12-31"
+end_date = "2025-09-24"
 
 # OANDA API Configuration
 OANDA_BASE_URL = "https://api-fxpractice.oanda.com"  # Practice account
@@ -260,14 +260,48 @@ def main():
             print(f"- {inst['name']}: {inst['displayName']}")
         return
     
-    # For M1 data, we need to chunk the date range due to API limits
-    if timeframe == "M1":
-        print(f"Date range: {start_date} to {end_date}")
-        print("M1 data requires chunking due to API limits. Processing in daily chunks...")
+    # Determine if chunking is needed based on timeframe and date range
+    def needs_chunking(timeframe: str, start_date: str, end_date: str) -> bool:
+        """Determine if data fetching needs chunking based on timeframe and date range"""
+        from datetime import datetime, timedelta
         
-        # Generate daily chunks for M1 data
-        date_chunks = fetcher.generate_date_chunks(start_date, end_date, chunk_days=1)
-        print(f"Generated {len(date_chunks)} daily chunks")
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        days_diff = (end - start).days
+        
+        # Chunking thresholds based on timeframe
+        chunking_thresholds = {
+            "M1": 1,    # 1 day for M1 data
+            "M5": 7,    # 7 days for M5 data  
+            "M15": 30,  # 30 days for M15 data
+            "M30": 60,  # 60 days for M30 data
+            "H1": 90,   # 90 days for H1 data
+            "H4": 180,  # 180 days for H4 data
+            "D": 365    # 365 days for daily data
+        }
+        
+        threshold = chunking_thresholds.get(timeframe, 365)
+        return days_diff > threshold
+    
+    # Check if chunking is needed
+    if needs_chunking(timeframe, start_date, end_date):
+        print(f"Date range: {start_date} to {end_date}")
+        print(f"{timeframe} data requires chunking due to API limits. Processing in chunks...")
+        
+        # Determine chunk size based on timeframe
+        chunk_sizes = {
+            "M1": 1,    # 1 day chunks for M1
+            "M5": 7,    # 7 day chunks for M5
+            "M15": 30,  # 30 day chunks for M15
+            "M30": 60,  # 60 day chunks for M30
+            "H1": 90,   # 90 day chunks for H1
+            "H4": 180,  # 180 day chunks for H4
+            "D": 365    # 365 day chunks for daily
+        }
+        
+        chunk_days = chunk_sizes.get(timeframe, 30)
+        date_chunks = fetcher.generate_date_chunks(start_date, end_date, chunk_days=chunk_days)
+        print(f"Generated {len(date_chunks)} chunks of {chunk_days} days each")
         
         all_candles = []
         successful_chunks = 0
