@@ -25,8 +25,8 @@ MAX_DAILY_TRADES = 2            # Maximum trades per day
 MAX_CONCURRENT_POSITIONS = 1    # Maximum concurrent positions
 
 # Time Filters
-TRADING_START_TIME = "09:30"    # Start trading time
-TRADING_END_TIME = "15:00"      # End trading time
+TRADING_START_TIME = "14:30"    # Start trading time (9:30 AM EST = 14:30 UTC)
+TRADING_END_TIME = "21:00"      # End trading time (4:00 PM EST = 21:00 UTC)
 AVOID_FIRST_MINUTES = 3         # Minutes to avoid after ORB
 
 # Backtest Parameters

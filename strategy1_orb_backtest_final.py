@@ -25,8 +25,8 @@ MAX_DAILY_TRADES = 2            # Research shows fewer trades = better quality
 MAX_CONCURRENT_POSITIONS = 1    # Maximum concurrent positions
 
 # Time Filters (RESEARCH OPTIMIZED)
-TRADING_START_TIME = "09:30"    # Start trading time
-TRADING_END_TIME = "15:00"      # Earlier end time to avoid late-day noise
+TRADING_START_TIME = "14:30"    # Start trading time (9:30 AM EST = 14:30 UTC)
+TRADING_END_TIME = "21:00"      # End trading time (4:00 PM EST = 21:00 UTC)
 AVOID_FIRST_MINUTES = 3         # Reduced to 3 minutes after ORB (research shows 5-10 min)
 
 # Backtest Parameters

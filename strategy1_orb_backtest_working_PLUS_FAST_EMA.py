@@ -4,27 +4,31 @@ from typing import Dict, Tuple, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
-# ========= ORB STRATEGY PARAMETERS =========
-# You can modify these parameters to test different configurations
+# ========= WORKING ORB STRATEGY PARAMETERS =========
+# Simplified version that works reliably
 
-# Opening Range Parameters
-ORB_START_TIME = "09:30"  # Opening range start time (market open)
-ORB_END_TIME = "10:00"    # Opening range end time (30 minutes)
-ORB_EXTENSION_MINUTES = 30  # Additional minutes to extend range if needed
+# Opening Range Parameters (UTC times for SPX500)
+ORB_START_TIME = "14:30"  # Market open (9:30 AM EST = 14:30 UTC)
+ORB_END_TIME = "14:45"    # 15-minute opening range
+ORB_EXTENSION_MINUTES = 15  # Additional minutes to extend range if needed
 
 # Breakout Parameters
 BREAKOUT_CONFIRMATION_BARS = 1  # Number of bars to confirm breakout
 BREAKOUT_FILTER_PERCENT = 0.0   # Minimum percentage above/below range for valid breakout
-MIN_BREAKOUT_DISTANCE = 0.5     # Minimum points above/below range for valid breakout
+MIN_BREAKOUT_DISTANCE = 0.3     # Minimum points above/below range for valid breakout
 
 # Risk Management
-STOP_LOSS_ATR_MULTIPLIER = 2.0  # ATR multiplier for stop loss
-TAKE_PROFIT_RATIO = 2.0         # Risk:Reward ratio (2:1)
+STOP_LOSS_ATR_MULTIPLIER = 1.5  # ATR multiplier for stop loss
+TAKE_PROFIT_RATIO = 2.0         # Risk:reward ratio
 POSITION_SIZE = 1000            # Position size in dollars
-MAX_DAILY_TRADES = 3            # Maximum trades per day
+MAX_DAILY_TRADES = 2            # Maximum trades per day
 MAX_CONCURRENT_POSITIONS = 1    # Maximum concurrent positions
 
-# Time Filters
+# EMA Trend Filter
+EMA_FAST_PERIOD = 5             # Fast EMA period
+EMA_SLOW_PERIOD = 9             # Slow EMA period
+
+# Time Filters (UTC times for SPX500)
 TRADING_START_TIME = "14:30"    # Start trading time (9:30 AM EST = 14:30 UTC)
 TRADING_END_TIME = "21:00"      # End trading time (4:00 PM EST = 21:00 UTC)
 AVOID_FIRST_MINUTES = 3         # Minutes to avoid after ORB
@@ -35,13 +39,13 @@ COMMISSION_PER_TRADE = 2.50     # Commission per trade
 SLIPPAGE_POINTS = 0.5           # Slippage in points
 
 # Data Parameters
-DATA_FILE = "oanda_NAS100_USD_M1_2023-01-01_to_2025-12-31.csv"
-SYMBOL = "NAS100_USD"
+DATA_FILE = "oanda_SPX500_USD_M1_2023-01-01_to_2025-12-31.csv"
+SYMBOL = "SPX500_USD"
 
-# ========= ORB STRATEGY CLASSES =========
+# ========= WORKING ORB STRATEGY CLASSES =========
 
-class ORBStrategy:
-    """Opening Range Breakout Strategy Implementation"""
+class WorkingORBStrategy:
+    """Working Opening Range Breakout Strategy Implementation"""
     
     def __init__(self, params: Dict):
         self.params = params
@@ -53,16 +57,7 @@ class ORBStrategy:
         self.last_trade_date = None
         
     def calculate_opening_range(self, df: pd.DataFrame, date: str) -> Tuple[float, float, int, int]:
-        """
-        Calculate opening range high and low for a specific date
-        
-        Args:
-            df: DataFrame with OHLCV data
-            date: Date string in YYYY-MM-DD format
-            
-        Returns:
-            Tuple of (range_high, range_low, start_idx, end_idx)
-        """
+        """Calculate opening range high and low for a specific date"""
         # Filter data for the specific date
         date_data = df[df.index.date == pd.to_datetime(date).date()]
         
@@ -88,33 +83,27 @@ class ORBStrategy:
         return range_high, range_low, start_idx, end_idx
     
     def check_breakout(self, df: pd.DataFrame, current_idx: int, range_high: float, range_low: float) -> str:
-        """
-        Check if current bar represents a valid breakout
+        """Check if current bar represents a valid breakout with EMA trend filter"""
+        current_bar = df.iloc[current_idx]
         
-        Args:
-            df: DataFrame with OHLCV data
-            current_idx: Current bar index
-            range_high: Opening range high
-            range_low: Opening range low
-            
-        Returns:
-            'long', 'short', or 'none'
-        """
-        current_bar = df.loc[current_idx]
+        # Get trend direction from EMA
+        trend_direction = self.check_trend_direction(df, current_idx)
         
         # Check for long breakout (above range high)
         if current_bar['close'] > range_high:
-            # Apply breakout filter
             breakout_distance = current_bar['close'] - range_high
             if breakout_distance >= self.params['min_breakout_distance']:
-                return 'long'
+                # Only allow long trades in bullish or neutral trends
+                if trend_direction in ['bullish', 'neutral']:
+                    return 'long'
         
         # Check for short breakout (below range low)
         elif current_bar['close'] < range_low:
-            # Apply breakout filter
             breakout_distance = range_low - current_bar['close']
             if breakout_distance >= self.params['min_breakout_distance']:
-                return 'short'
+                # Only allow short trades in bearish or neutral trends
+                if trend_direction in ['bearish', 'neutral']:
+                    return 'short'
         
         return 'none'
     
@@ -133,6 +122,37 @@ class ORBStrategy:
         atr = true_range.mean()
         
         return atr
+    
+    def calculate_ema(self, df: pd.DataFrame, current_idx: int, period: int) -> float:
+        """Calculate Exponential Moving Average"""
+        if current_idx < period - 1:
+            return None
+            
+        # Get data up to current index
+        data = df.iloc[:current_idx+1]['close']
+        
+        # Calculate EMA using pandas
+        ema = data.ewm(span=period, adjust=False).mean().iloc[-1]
+        
+        return ema
+    
+    def check_trend_direction(self, df: pd.DataFrame, current_idx: int) -> str:
+        """Check trend direction using EMA 5 and 9"""
+        # Calculate both EMAs
+        ema_fast = self.calculate_ema(df, current_idx, self.params['ema_fast_period'])
+        ema_slow = self.calculate_ema(df, current_idx, self.params['ema_slow_period'])
+        
+        # If we don't have enough data for EMAs, return neutral
+        if ema_fast is None or ema_slow is None:
+            return 'neutral'
+        
+        # Determine trend direction
+        if ema_fast > ema_slow:
+            return 'bullish'  # Fast EMA above slow EMA = uptrend
+        elif ema_fast < ema_slow:
+            return 'bearish'  # Fast EMA below slow EMA = downtrend
+        else:
+            return 'neutral'  # EMAs are equal
     
     def calculate_position_size(self, entry_price: float, stop_loss: float) -> int:
         """Calculate position size based on risk management"""
@@ -253,16 +273,16 @@ class ORBStrategy:
         return trade
 
 
-class ORBBacktester:
-    """Backtesting engine for ORB strategy"""
+class WorkingORBBacktester:
+    """Working backtesting engine for ORB strategy"""
     
-    def __init__(self, strategy: ORBStrategy):
+    def __init__(self, strategy: WorkingORBStrategy):
         self.strategy = strategy
         self.results = {}
         
     def run_backtest(self, df: pd.DataFrame) -> Dict:
-        """Run the backtest on historical data"""
-        print("Starting ORB Backtest...")
+        """Run the working backtest on historical data"""
+        print("Starting Working ORB Backtest...")
         print(f"Data range: {df.index.min()} to {df.index.max()}")
         print(f"Total bars: {len(df)}")
         
@@ -271,7 +291,10 @@ class ORBBacktester:
         print(f"Trading days: {len(trading_days)}")
         
         # Process each trading day
-        for day in trading_days:
+        for i, day in enumerate(trading_days):
+            if i % 100 == 0:  # Progress indicator
+                print(f"Processing day {i+1}/{len(trading_days)}: {day}")
+                
             day_str = day.strftime('%Y-%m-%d')
             
             # Reset daily trade count
@@ -318,7 +341,7 @@ class ORBBacktester:
                 
                 # Check for new entry if not in position
                 if self.strategy.current_position is None:
-                    breakout_direction = self.strategy.check_breakout(df, idx, range_high, range_low)
+                    breakout_direction = self.strategy.check_breakout(df, df.index.get_loc(idx), range_high, range_low)
                     if breakout_direction != 'none':
                         atr = self.strategy.calculate_atr(df, df.index.get_loc(idx))
                         success = self.strategy.enter_position(
@@ -395,9 +418,9 @@ class ORBBacktester:
     
     def print_results(self):
         """Print backtest results"""
-        print("\n" + "="*50)
-        print("ORB STRATEGY BACKTEST RESULTS")
-        print("="*50)
+        print("\n" + "="*60)
+        print("WORKING ORB STRATEGY BACKTEST RESULTS")
+        print("="*60)
         
         if self.results['total_trades'] == 0:
             print("No trades executed during backtest period.")
@@ -436,7 +459,7 @@ def main():
         print(f"Data file {DATA_FILE} not found. Please ensure the file exists.")
         return
     
-    # Create strategy parameters dictionary
+    # Create working strategy parameters dictionary
     strategy_params = {
         'orb_start_time': ORB_START_TIME,
         'orb_end_time': ORB_END_TIME,
@@ -453,12 +476,14 @@ def main():
         'trading_end_time': TRADING_END_TIME,
         'avoid_first_minutes': AVOID_FIRST_MINUTES,
         'commission_per_trade': COMMISSION_PER_TRADE,
-        'slippage_points': SLIPPAGE_POINTS
+        'slippage_points': SLIPPAGE_POINTS,
+        'ema_fast_period': EMA_FAST_PERIOD,
+        'ema_slow_period': EMA_SLOW_PERIOD
     }
     
     # Create strategy and backtester
-    strategy = ORBStrategy(strategy_params)
-    backtester = ORBBacktester(strategy)
+    strategy = WorkingORBStrategy(strategy_params)
+    backtester = WorkingORBBacktester(strategy)
     
     # Run backtest
     results = backtester.run_backtest(df)
@@ -471,3 +496,4 @@ def main():
 
 if __name__ == "__main__":
     results = main()
+
